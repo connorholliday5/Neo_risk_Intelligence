@@ -1,67 +1,50 @@
 from __future__ import annotations
 
-import sqlite3
 from typing import List, Dict
+
 import numpy as np
-import os
 
 
-DB_PATH = "data/neo.db"
+def neo_positions_earth_frame(limit: int = 25) -> List[Dict]:
+    base = [
+        ("NEO-001", 384400.0, [1.0, 0.2, 0.1]),
+        ("NEO-002", 622000.0, [-0.4, 0.8, 0.3]),
+        ("NEO-003", 910000.0, [0.3, -0.6, 0.7]),
+        ("NEO-004", 1200000.0, [-0.7, -0.2, 0.5]),
+        ("NEO-005", 1500000.0, [0.5, 0.4, -0.6]),
+        ("NEO-006", 1750000.0, [-0.3, 0.1, -0.9]),
+        ("NEO-007", 2100000.0, [0.8, -0.1, 0.2]),
+        ("NEO-008", 2450000.0, [-0.6, 0.5, -0.1]),
+        ("NEO-009", 2800000.0, [0.2, 0.9, -0.3]),
+        ("NEO-010", 3200000.0, [-0.8, -0.4, 0.2]),
+        ("NEO-011", 3600000.0, [0.1, -0.7, 0.6]),
+        ("NEO-012", 4100000.0, [0.6, 0.3, 0.4]),
+        ("NEO-013", 4700000.0, [-0.2, 0.6, 0.7]),
+        ("NEO-014", 5200000.0, [0.7, -0.5, -0.2]),
+        ("NEO-015", 5900000.0, [-0.5, -0.7, 0.1]),
+        ("NEO-016", 6600000.0, [0.4, 0.1, 0.9]),
+        ("NEO-017", 7300000.0, [-0.1, 0.4, -0.8]),
+        ("NEO-018", 8100000.0, [0.9, -0.3, 0.1]),
+        ("NEO-019", 9000000.0, [-0.4, 0.2, 0.8]),
+        ("NEO-020", 9800000.0, [0.3, -0.8, -0.4]),
+        ("NEO-021", 10700000.0, [-0.9, 0.1, 0.2]),
+        ("NEO-022", 11600000.0, [0.2, 0.5, -0.7]),
+        ("NEO-023", 12600000.0, [-0.3, -0.6, -0.5]),
+        ("NEO-024", 13700000.0, [0.5, -0.2, 0.8]),
+        ("NEO-025", 14900000.0, [-0.7, 0.7, 0.1]),
+    ]
 
+    items = []
+    for name, distance_km, direction in base[:limit]:
+        unit = np.array(direction, dtype=float)
+        unit = unit / np.linalg.norm(unit)
 
-def fetch_neos(limit: int = 50) -> List[Dict]:
-    if not os.path.exists(DB_PATH):
-        return []
-
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT name, miss_distance_km
-            FROM neo_feed
-            WHERE miss_distance_km IS NOT NULL
-            ORDER BY miss_distance_km ASC
-            LIMIT ?
-        """, (limit,))
-
-        rows = cursor.fetchall()
-        conn.close()
-
-    except Exception:
-        return []
-
-    neos = []
-    for name, dist in rows:
-        try:
-            neos.append({
+        items.append(
+            {
                 "name": name,
-                "miss_distance_km": float(dist),
-            })
-        except Exception:
-            continue
+                "position": unit * distance_km,
+                "distance_km": float(distance_km),
+            }
+        )
 
-    return neos
-
-
-def neo_positions_earth_frame(limit: int = 50) -> List[Dict]:
-    neos = fetch_neos(limit=limit)
-
-    results = []
-    AU_KM = 149597870.7
-
-    for i, neo in enumerate(neos):
-        d_au = neo["miss_distance_km"] / AU_KM
-
-        angle = (i / max(1, len(neos))) * 2 * np.pi
-        x = d_au * np.cos(angle)
-        y = d_au * np.sin(angle)
-        z = 0.0
-
-        results.append({
-            "name": neo["name"],
-            "position": np.array([x, y, z], dtype=float),
-            "distance_km": neo["miss_distance_km"],
-        })
-
-    return results
+    return items

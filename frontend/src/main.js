@@ -1,119 +1,215 @@
-import * as THREE from "three";
-import axios from "axios";
+import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
 
-const SCALE = 20;
-
-// Scene
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
 
-// Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.innerHTML = '';
 document.body.appendChild(renderer.domElement);
 
-// Light
-const light = new THREE.PointLight(0xffffff,2);
-scene.add(light);
+// CAMERA
+const FRUSTUM_HEIGHT = 40;
+let aspect = window.innerWidth / window.innerHeight;
 
-// Objects container
-const objects = {};
+const camera = new THREE.OrthographicCamera(
+  (-FRUSTUM_HEIGHT * aspect) / 2,
+  (FRUSTUM_HEIGHT * aspect) / 2,
+  FRUSTUM_HEIGHT / 2,
+  -FRUSTUM_HEIGHT / 2,
+  0.1,
+  1000
+);
 
-// Planet info
-const PLANETS = [
-  {name:"sun", color:0xffff00, size:2},
-  {name:"mercury", color:0x888888, size:0.3},
-  {name:"venus", color:0xff8800, size:0.5},
-  {name:"earth", color:0x2233ff, size:0.6},
-  {name:"mars", color:0xff2200, size:0.5},
-  {name:"jupiter", color:0xffaa33, size:1},
-  {name:"saturn", color:0xffdd55, size:0.9},
-  {name:"uranus", color:0x88ccff, size:0.7},
-  {name:"neptune", color:0x4444ff, size:0.7}
-];
+camera.position.set(0, 0, 100);
+camera.lookAt(0, 0, 0);
 
-// Create planet meshes
-PLANETS.forEach(p=>{
-  const geo = new THREE.SphereGeometry(p.size,32,32);
-  const mat = new THREE.MeshStandardMaterial({color:p.color});
-  const mesh = new THREE.Mesh(geo,mat);
-  scene.add(mesh);
-  objects[p.name] = mesh;
-});
+// STARFIELD
+const starGeometry = new THREE.BufferGeometry();
+const starVerts = [];
 
-// Create ISS mesh
-const issGeo = new THREE.SphereGeometry(0.2,16,16);
-const issMat = new THREE.MeshStandardMaterial({color:0xff0000});
-const iss = new THREE.Mesh(issGeo, issMat);
-scene.add(iss);
-objects["iss"] = iss;
-
-// Fetch scene and update positions
-async function updateScene(page="solar"){
-  try{
-    const res = await axios.get(`http://127.0.0.1:8000/scene/${page}`);
-    const data = res.data;
-
-    // Center
-    let cx=0, cy=0, cz=0;
-    if(data.bodies){
-      data.bodies.forEach(b=>{cx+=b.position[0]; cy+=b.position[1]; cz+=b.position[2];});
-      const n=data.bodies.length;
-      cx/=n; cy/=n; cz/=n;
-
-      // Planets
-      data.bodies.forEach(b=>{
-        if(objects[b.name]){
-          objects[b.name].position.set(
-            (b.position[0]-cx)*SCALE,
-            (b.position[1]-cy)*SCALE,
-            (b.position[2]-cz)*SCALE
-          );
-        }
-      });
-    }
-
-    // ISS
-    if(data.iss && objects["iss"]){
-      objects["iss"].position.set(
-        (data.iss.position[0]-cx)*SCALE,
-        (data.iss.position[1]-cy)*SCALE,
-        (data.iss.position[2]-cz)*SCALE
-      );
-    }
-
-    // NEOs
-    if(data.neos){
-      data.neos.forEach(n=>{
-        if(!objects[n.name]){
-          const geo = new THREE.SphereGeometry(0.1,8,8);
-          const mat = new THREE.MeshStandardMaterial({color:0xff00ff});
-          const mesh = new THREE.Mesh(geo,mat);
-          scene.add(mesh);
-          objects[n.name] = mesh;
-        }
-        objects[n.name].position.set(
-          (n.position[0]-cx)*SCALE,
-          (n.position[1]-cy)*SCALE,
-          (n.position[2]-cz)*SCALE
-        );
-      });
-    }
-
-  }catch(err){console.error(err);}
+for (let i = 0; i < 3500; i++) {
+  starVerts.push(
+    (Math.random() - 0.5) * 400,
+    (Math.random() - 0.5) * 200,
+    -50 - Math.random() * 200
+  );
 }
 
-// Camera
-camera.position.set(0,-60,30);
-camera.lookAt(0,0,0);
+starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
 
-// Animate
-function animate(){
+scene.add(new THREE.Points(
+  starGeometry,
+  new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, sizeAttenuation: false })
+));
+
+// LIGHT
+scene.add(new THREE.AmbientLight(0xffffff, 1));
+
+// GROUPS
+const systemGroup = new THREE.Group();
+scene.add(systemGroup);
+
+const planetGroup = new THREE.Group();
+systemGroup.add(planetGroup);
+
+// PLANET DATA
+const planetData = [
+  { name: 'mercury', color: 0xb8b8b8, size: 0.45 },
+  { name: 'venus',   color: 0xe9c07a, size: 0.75 },
+  { name: 'earth',   color: 0x4aa3ff, size: 0.85 },
+  { name: 'mars',    color: 0xff6a4a, size: 0.65 },
+  { name: 'jupiter', color: 0xe8a98a, size: 1.55 },
+  { name: 'saturn',  color: 0xead0a6, size: 1.35 },
+  { name: 'uranus',  color: 0x9ad7f7, size: 1.15 },
+  { name: 'neptune', color: 0x3d7cff, size: 1.15 }
+];
+
+function clearGroup(group) {
+  while (group.children.length) {
+    const child = group.children[0];
+    group.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) child.material.dispose();
+  }
+}
+
+function createBelt(startX, endX, count, spreadY) {
+  const geometry = new THREE.BufferGeometry();
+  const verts = [];
+
+  for (let i = 0; i < count; i++) {
+    verts.push(
+      startX + Math.random() * (endX - startX),
+      (Math.random() - 0.5) * spreadY,
+      0
+    );
+  }
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.2,
+      transparent: true,
+      opacity: 0.8
+    })
+  );
+}
+
+function buildScene() {
+
+  clearGroup(systemGroup);
+  systemGroup.add(planetGroup);
+  clearGroup(planetGroup);
+
+  const viewHeight = camera.top - camera.bottom;
+  const left = camera.left;
+
+  // SUN
+  const sunRadius = viewHeight * 0.34;
+
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(sunRadius, 96, 96),
+    new THREE.MeshBasicMaterial({ color: 0xf2c552 })
+  );
+
+  sun.scale.y = 1.4;
+  sun.position.set(left - sunRadius * 0.42, 0, 0);
+  systemGroup.add(sun);
+
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(sunRadius * 1.2, 96, 96),
+    new THREE.MeshBasicMaterial({
+      color: 0xffb300,
+      transparent: true,
+      opacity: 0.12
+    })
+  );
+
+  glow.position.copy(sun.position);
+  systemGroup.add(glow);
+
+  // PLANET POSITIONS
+  const positions = [
+    -16.5,
+    -12.5,
+    -8.5,
+    -4.5,
+     4,
+     10,
+     16,
+     21
+  ];
+
+  const sizeScale = viewHeight * 0.075;
+
+  planetData.forEach((p, i) => {
+
+    const radius = p.size * sizeScale * 0.5;
+
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 48, 48),
+      new THREE.MeshBasicMaterial({ color: p.color })
+    );
+
+    planet.position.set(positions[i], 0, 0);
+    planetGroup.add(planet);
+
+    if (p.name === 'saturn') {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(radius * 1.1, radius * 1.6, 96),
+        new THREE.MeshBasicMaterial({
+          color: 0xcdbb97,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9
+        })
+      );
+
+      ring.rotation.x = Math.PI / 2.7;
+      ring.rotation.z = -0.12;
+      planet.add(ring);
+    }
+
+  });
+
+  // ?? ASTEROID BELT (Mars ? Jupiter)
+  const asteroidBelt = createBelt(-2, 3, 450, 1.2);
+  systemGroup.add(asteroidBelt);
+
+  // ?? KUIPER BELT (beyond Neptune)
+  const kuiperBelt = createBelt(22, 34, 500, 2);
+  systemGroup.add(kuiperBelt);
+}
+
+// RESIZE
+function updateCamera() {
+  aspect = window.innerWidth / window.innerHeight;
+
+  camera.left = (-FRUSTUM_HEIGHT * aspect) / 2;
+  camera.right = (FRUSTUM_HEIGHT * aspect) / 2;
+  camera.top = FRUSTUM_HEIGHT / 2;
+  camera.bottom = -FRUSTUM_HEIGHT / 2;
+
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  updateCamera();
+  buildScene();
+});
+
+updateCamera();
+buildScene();
+
+function animate() {
   requestAnimationFrame(animate);
-  updateScene();
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 }
 
 animate();

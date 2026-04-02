@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
+
 from neo_risk_intelligence.core.scene import build_scene
 from neo_risk_intelligence.core.sky import build_sky_scene
 
@@ -12,10 +14,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Recursive float conversion
 def to_float_list(obj):
     if isinstance(obj, (list, tuple, np.ndarray)):
-        return [float(to_float_list(x)) for x in obj]
+        return [to_float_list(x) for x in obj]
     return float(obj)
 
 def serialize_positions(bodies):
@@ -35,7 +36,8 @@ def get_scene(page: str):
         return sky
     else:
         scene = build_scene(page)
-        scene["bodies"] = serialize_positions(scene["bodies"])
+        if "bodies" in scene:
+            scene["bodies"] = serialize_positions(scene["bodies"])
         if page == "earth":
             scene["earth_centered_bodies"] = serialize_positions(scene["earth_centered_bodies"])
             scene["iss"]["position"] = to_float_list(scene["iss"]["position"])

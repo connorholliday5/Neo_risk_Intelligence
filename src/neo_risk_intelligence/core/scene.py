@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 import numpy as np
 
 from .clock import now_clock_state
 from .ephemeris import get_planet_positions, get_earth_centered_positions
 from .iss import get_iss_position_normalized
 from .neo import neo_positions_earth_frame
+from .transforms import normalize
 
 
 def build_solar_system_scene() -> Dict[str, Any]:
@@ -25,7 +26,7 @@ def build_solar_system_scene() -> Dict[str, Any]:
         "bodies": [
             {
                 "name": name,
-                "position": pos.tolist(),
+                "position": normalize(pos).tolist(),
             }
             for name, pos in heliocentric.items()
         ],
@@ -52,17 +53,17 @@ def build_earth_scene() -> Dict[str, Any]:
         "earth_centered_bodies": [
             {
                 "name": name,
-                "position": pos.tolist(),
+                "position": normalize(pos).tolist(),
             }
             for name, pos in earth_frame.items()
         ],
         "iss": {
-            "position": iss_pos.tolist(),
+            "position": normalize(iss_pos).tolist(),
         },
         "neos": [
             {
                 "name": n["name"],
-                "position": n["position"].tolist(),
+                "position": normalize(n["position"]).tolist(),
                 "distance_km": n["distance_km"],
             }
             for n in neos
