@@ -188,7 +188,7 @@ function buildScene() {
   // PLANET SPACING
   const usableRight = camera.right - viewWidth * 0.07;
   const mercuryX = sun.position.x + sunRadius + 4.2;
-  const neptuneX = usableRight - 2.2;
+  const neptuneX = usableRight - 3.2;
   const step = (neptuneX - mercuryX) / 7.0;
 
   const positions = [
@@ -198,7 +198,7 @@ function buildScene() {
     mercuryX + step * 2.35,
     mercuryX + step * 3.65,
     mercuryX + step * 4.75,
-    mercuryX + step * 5.85,
+    mercuryX + step * 5.91,
     neptuneX
   ];
 
