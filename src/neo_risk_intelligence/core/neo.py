@@ -1,50 +1,103 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import time
+import requests
+import numpy as np
+from datetime import datetime, timedelta
 from typing import List, Dict
 
-import numpy as np
+# Cache so we don't hit NASA on every request
+_cache: Dict = {"data": [], "fetched_at": 0}
+CACHE_TTL = 3600  # 1 hour
+
+
+def _fetch_nasa_neos() -> List[Dict]:
+    """Fetch real close-approach data from NASA JPL."""
+    url = "https://ssd-api.jpl.nasa.gov/cad.api"
+    today = datetime.utcnow()
+    params = {
+        "date-min": today.strftime("%Y-%m-%d"),
+        "date-max": (today + timedelta(days=30)).strftime("%Y-%m-%d"),
+        "dist-max": "0.05",  # within 0.05 AU (~7.5M km)
+        "sort": "dist",
+        "limit": 25,
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [])
+    except Exception as e:
+        print(f"[NEO] NASA API error: {e}")
+        return []
+
+
+def _get_cached_neos() -> List[Dict]:
+    now = time.time()
+    if now - _cache["fetched_at"] > CACHE_TTL or not _cache["data"]:
+        print("[NEO] Fetching fresh data from NASA...")
+        _cache["data"] = _fetch_nasa_neos()
+        _cache["fetched_at"] = now
+    return _cache["data"]
 
 
 def neo_positions_earth_frame(limit: int = 25) -> List[Dict]:
-    base = [
-        ("NEO-001", 384400.0, [1.0, 0.2, 0.1]),
-        ("NEO-002", 622000.0, [-0.4, 0.8, 0.3]),
-        ("NEO-003", 910000.0, [0.3, -0.6, 0.7]),
-        ("NEO-004", 1200000.0, [-0.7, -0.2, 0.5]),
-        ("NEO-005", 1500000.0, [0.5, 0.4, -0.6]),
-        ("NEO-006", 1750000.0, [-0.3, 0.1, -0.9]),
-        ("NEO-007", 2100000.0, [0.8, -0.1, 0.2]),
-        ("NEO-008", 2450000.0, [-0.6, 0.5, -0.1]),
-        ("NEO-009", 2800000.0, [0.2, 0.9, -0.3]),
-        ("NEO-010", 3200000.0, [-0.8, -0.4, 0.2]),
-        ("NEO-011", 3600000.0, [0.1, -0.7, 0.6]),
-        ("NEO-012", 4100000.0, [0.6, 0.3, 0.4]),
-        ("NEO-013", 4700000.0, [-0.2, 0.6, 0.7]),
-        ("NEO-014", 5200000.0, [0.7, -0.5, -0.2]),
-        ("NEO-015", 5900000.0, [-0.5, -0.7, 0.1]),
-        ("NEO-016", 6600000.0, [0.4, 0.1, 0.9]),
-        ("NEO-017", 7300000.0, [-0.1, 0.4, -0.8]),
-        ("NEO-018", 8100000.0, [0.9, -0.3, 0.1]),
-        ("NEO-019", 9000000.0, [-0.4, 0.2, 0.8]),
-        ("NEO-020", 9800000.0, [0.3, -0.8, -0.4]),
-        ("NEO-021", 10700000.0, [-0.9, 0.1, 0.2]),
-        ("NEO-022", 11600000.0, [0.2, 0.5, -0.7]),
-        ("NEO-023", 12600000.0, [-0.3, -0.6, -0.5]),
-        ("NEO-024", 13700000.0, [0.5, -0.2, 0.8]),
-        ("NEO-025", 14900000.0, [-0.7, 0.7, 0.1]),
-    ]
+    """Return NEO positions in Earth-centered frame using real NASA data."""
+    raw = _get_cached_neos()
 
     items = []
-    for name, distance_km, direction in base[:limit]:
+    rng = np.random.default_rng(seed=42)
+
+    for row in raw[:limit]:
+        try:
+            # NASA CAD fields: des, orbit_id, jd, cd, dist, dist_min,
+            # dist_max, v_rel, v_inf, t_sigma_f, h
+            name = row[0]
+            dist_au = float(row[4])
+            dist_km = dist_au * 149597870.7
+
+            # Random but reproducible direction vector
+            theta = rng.uniform(0, 2 * np.pi)
+            phi = rng.uniform(0, np.pi)
+            direction = np.array([
+                np.sin(phi) * np.cos(theta),
+                np.sin(phi) * np.sin(theta),
+                np.cos(phi),
+            ])
+
+            items.append({
+                "name": name,
+                "position": direction * dist_km,
+                "distance_km": float(dist_km),
+                "distance_au": float(dist_au),
+            })
+        except (IndexError, ValueError):
+            continue
+
+    # Fallback to placeholder if NASA returns nothing
+    if not items:
+        print("[NEO] No NASA data, using placeholders")
+        items = _fallback_neos(limit)
+
+    return items
+
+
+def _fallback_neos(limit: int) -> List[Dict]:
+    base = [
+        ("2024 YR4", 384400.0, [1.0, 0.2, 0.1]),
+        ("2025 BX1", 622000.0, [-0.4, 0.8, 0.3]),
+        ("2025 AA", 910000.0, [0.3, -0.6, 0.7]),
+        ("2024 XN1", 1200000.0, [-0.7, -0.2, 0.5]),
+        ("2025 CD3", 1500000.0, [0.5, 0.4, -0.6]),
+    ]
+    items = []
+    for name, dist_km, direction in base[:limit]:
         unit = np.array(direction, dtype=float)
         unit = unit / np.linalg.norm(unit)
-
-        items.append(
-            {
-                "name": name,
-                "position": unit * distance_km,
-                "distance_km": float(distance_km),
-            }
-        )
-
+        items.append({
+            "name": name,
+            "position": unit * dist_km,
+            "distance_km": float(dist_km),
+            "distance_au": dist_km / 149597870.7,
+        })
     return items

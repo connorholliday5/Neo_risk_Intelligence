@@ -1,5 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 data/
+*.bsp
 .env
+frontend/node_modules/
+frontend/dist/
+package.json

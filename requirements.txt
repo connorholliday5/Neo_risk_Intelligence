@@ -1,5 +1,10 @@
-streamlit
-pandas
-numpy
-matplotlib
-requests
+﻿fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+skyfield>=1.48
+astropy>=6.0
+numpy>=1.26
+scipy>=1.13
+requests>=2.31
+pandas>=2.2
+plotly>=5.22
+matplotlib>=3.8

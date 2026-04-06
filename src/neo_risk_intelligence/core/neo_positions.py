@@ -1,5 +1,5 @@
 import numpy as np
-from src.neo_risk_intelligence.core.state_engine import get_neo_state
+from .state_engine import get_neo_state
 
 def get_neo_positions():
     df = get_neo_state()
