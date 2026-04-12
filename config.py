@@ -2,8 +2,8 @@
 # Edit this file to change your location and other settings.
 
 # Observer location (used for sky view)
-OBSERVER_LAT = 41.7   # Providence, RI — change to your latitude
-OBSERVER_LON = -71.4  # Providence, RI — change to your longitude
+OBSERVER_LAT = 41.3776  # 12 Ella St, Westerly RI
+OBSERVER_LON = -71.8271
 OBSERVER_ELEVATION_M = 10
 
 # API server

@@ -26,7 +26,8 @@ camera.lookAt(0, 0, 0);
 
 const composer = setupPostProcessing(renderer, scene, camera);
 
-// STARFIELD
+// ─── STARFIELD ────────────────────────────────────────────────────────────────
+
 const starGeo = new THREE.BufferGeometry();
 const starVerts = [];
 for (let i = 0; i < 3500; i++) {
@@ -45,14 +46,21 @@ scene.add(systemGroup);
 const planetGroup = new THREE.Group();
 systemGroup.add(planetGroup);
 
-// Live data from WebSocket
+// ─── STATE ────────────────────────────────────────────────────────────────────
+
 let liveScene = null;
-
-// Planet order from API
-const PLANET_ORDER = ["mercury","venus","earth","mars","jupiter","saturn","uranus","neptune"];
-
+let currentView = "solar";
+let solarWs = null;
+let earthWs = null;
+let skyWs = null;
 let sunShader = null;
 let planetMeshes = [];
+let earthGroup = null;
+let issMesh = null;
+let neoMeshes = [];
+let skyGroup = null;
+
+const PLANET_ORDER = ["mercury","venus","earth","mars","jupiter","saturn","uranus","neptune"];
 
 function clearGroup(group) {
   while (group.children.length) {
@@ -65,6 +73,145 @@ function clearGroup(group) {
     }
   }
 }
+
+// ─── UI ELEMENTS ──────────────────────────────────────────────────────────────
+
+// Solar: big clock top-center
+const solarDatetime = document.createElement("div");
+solarDatetime.id = "solar-datetime";
+solarDatetime.style.cssText = `
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: rgb(255, 255, 255);
+  font-family: monospace;
+  pointer-events: none;
+  display: none;
+`;
+document.body.appendChild(solarDatetime);
+
+// Solar: astronomy events bottom-center
+const eventsPanel = document.createElement("div");
+eventsPanel.id = "events-panel";
+eventsPanel.style.cssText = `
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.97);
+  font-family: monospace;
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  display: none;
+`;
+const year = new Date().getFullYear();
+const skyEvents = {
+  2026: [
+    "JAN 03 — Quadrantids Meteor Shower",
+    "AUG 11 — Perseids Peak (best of year)",
+    "AUG 12 — Partial Solar Eclipse visible from RI",
+    "OCT 21 — Orionids Meteor Shower",
+    "DEC 13 — Geminids Meteor Shower",
+  ],
+  2027: [
+    "JAN 03 — Quadrantids Meteor Shower",
+    "FEB 20 — Total Lunar Eclipse",
+    "AUG 11 — Perseids Peak",
+    "SEP 02 — Total Solar Eclipse",
+    "DEC 13 — Geminids Meteor Shower",
+  ],
+};
+const yearEvents = skyEvents[year] || skyEvents[2026];
+eventsPanel.innerHTML = `
+  <div style="font-size:21px;opacity:0.5;margin-bottom:6px;letter-spacing:0.2em">${year} SKY EVENTS — WESTERLY, RI</div>
+  ${yearEvents.map(e => `<div style="margin:3px 0">${e}</div>`).join("")}
+`;
+document.body.appendChild(eventsPanel);
+
+// Earth/Sky: date-time bottom-right
+const overlay = document.createElement("div");
+overlay.id = "neo-overlay";
+overlay.style.cssText = `
+  position: fixed;
+  bottom: 16px;
+  right: 24px;
+  color: rgb(255, 255, 255);
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  display: none;
+`;
+document.body.appendChild(overlay);
+
+// Earth/Sky: risk meter / info panel top-right
+const riskMeter = document.createElement("div");
+riskMeter.id = "risk-meter";
+riskMeter.style.cssText = `
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgb(255, 255, 255);
+  border-radius: 8px;
+  padding: 12px 18px;
+  color: white;
+  font-family: monospace;
+  text-align: center;
+  display: none;
+  pointer-events: none;
+`;
+document.body.appendChild(riskMeter);
+
+// Back button bottom-left
+const backBtn = document.createElement("div");
+backBtn.id = "back-btn";
+backBtn.style.cssText = `
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 8px 16px;
+  color: rgb(255, 255, 255);
+  font-family: monospace;
+  font-size: 13px;
+  cursor: pointer;
+  display: none;
+  z-index: 100;
+  user-select: none;
+`;
+backBtn.addEventListener("click", () => {
+  if (currentView === "earth") switchToSolar();
+  else if (currentView === "sky") switchToEarth();
+});
+backBtn.addEventListener("mouseenter", () => backBtn.style.color = "white");
+backBtn.addEventListener("mouseleave", () => backBtn.style.color = "rgba(255,255,255,0.7)");
+document.body.appendChild(backBtn);
+
+// Hover tooltip
+const tooltip = document.createElement("div");
+tooltip.style.cssText = `
+  position: fixed;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: white;
+  font-family: monospace;
+  font-size: 12px;
+  pointer-events: none;
+  display: none;
+  z-index: 100;
+`;
+document.body.appendChild(tooltip);
+
+// ─── SOLAR VIEW ───────────────────────────────────────────────────────────────
 
 function buildScene() {
   clearGroup(systemGroup);
@@ -240,35 +387,25 @@ function buildScene() {
   });
 }
 
-// Apply live position data — use z component for vertical offset
 function applyLiveData(data) {
   if (!data || !data.bodies) return;
   const viewHeight = camera.top - camera.bottom;
   const maxOffset = viewHeight * 0.18;
-
   data.bodies.forEach(body => {
     const mesh = planetMeshes.find(m => m.userData.name === body.name);
     if (!mesh) return;
-    const z = body.position[2];
-    mesh.position.y = z * maxOffset;
+    mesh.position.y = body.position[2] * maxOffset;
   });
-
-  // Update time overlay
   if (data.time) {
-    const overlay = document.getElementById("neo-overlay");
-    if (overlay) overlay.textContent = `${data.time.date}  ${data.time.time}`;
+    const dt = document.getElementById("solar-datetime");
+    if (dt) dt.innerHTML = `
+      <div style="font-size:72px;font-weight:200;letter-spacing:0.12em">${data.time.time}</div>
+      <div style="font-size:22px;font-weight:300;letter-spacing:0.2em;opacity:0.7;margin-top:4px">${data.time.date}</div>
+    `;
   }
 }
 
 // ─── EARTH VIEW ───────────────────────────────────────────────────────────────
-
-let currentView = "solar";
-let earthGroup = null;
-let issAngle = 0;
-let issMesh = null;
-let neoMeshes = [];
-let earthWs = null;
-let solarWs = null;
 
 function buildEarthView(data) {
   clearGroup(systemGroup);
@@ -278,46 +415,40 @@ function buildEarthView(data) {
   const viewHeight = camera.top - camera.bottom;
   const R = viewHeight * 0.22;
 
-  // Earth sphere
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(R, 64, 64),
     new THREE.MeshBasicMaterial({ color: 0x1a6fa8 })
   );
+  earth.userData.name = "earth-sphere";
   earthGroup.add(earth);
 
-  // Atmosphere glow ring
   const atmo = new THREE.Mesh(
     new THREE.RingGeometry(R * 1.02, R * 1.08, 128),
     new THREE.MeshBasicMaterial({
-      color: 0x4488ff, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.15
+      color: 0x4488ff, side: THREE.DoubleSide, transparent: true, opacity: 0.15
     })
   );
   earthGroup.add(atmo);
 
-  // ISS orbit ring
   const orbitRing = new THREE.Mesh(
     new THREE.RingGeometry(R * 1.12, R * 1.13, 128),
     new THREE.MeshBasicMaterial({
-      color: 0xffffff, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.25
+      color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.25
     })
   );
   earthGroup.add(orbitRing);
 
-  // ISS dot
   issMesh = new THREE.Mesh(
     new THREE.SphereGeometry(R * 0.04, 8, 8),
     new THREE.MeshBasicMaterial({ color: 0xffffff })
   );
+  issMesh.userData.name = "ISS";
   earthGroup.add(issMesh);
 
-  // NEO dots from live data
   neoMeshes = [];
   if (data && data.neos) {
     data.neos.forEach(neo => {
       const dist = neo.distance_km || 5000000;
-      // Color: green=far, yellow=medium, red=close
       let color;
       if (dist < 500000) color = 0xff2200;
       else if (dist < 2000000) color = 0xffaa00;
@@ -347,11 +478,7 @@ function updateISSPosition(data) {
   const issOrbitR = R * 1.125;
   const pos = data.iss.position;
   const angle = Math.atan2(pos[1], pos[0]);
-  issMesh.position.set(
-    Math.cos(angle) * issOrbitR,
-    Math.sin(angle) * issOrbitR,
-    0
-  );
+  issMesh.position.set(Math.cos(angle) * issOrbitR, Math.sin(angle) * issOrbitR, 0);
 }
 
 function updateRiskMeter(data) {
@@ -365,11 +492,92 @@ function updateRiskMeter(data) {
   el.innerHTML = `
     <div style="font-size:10px;opacity:0.6;margin-bottom:2px">CLOSEST NEO</div>
     <div style="font-size:18px;font-weight:bold;color:${color}">${level}</div>
-    <div style="font-size:11px;opacity:0.7">${(closest/1000).toFixed(0).toLocaleString()} k km</div>
+    <div style="font-size:11px;opacity:0.7">${(closest / 1000).toFixed(0).toLocaleString()} k km</div>
   `;
 }
 
-// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+// ─── SKY VIEW ─────────────────────────────────────────────────────────────────
+
+function buildSkyView(data) {
+  clearGroup(systemGroup);
+  skyGroup = new THREE.Group();
+  systemGroup.add(skyGroup);
+
+  const viewHeight = camera.top - camera.bottom;
+  const scale = viewHeight * 0.48;
+
+  if (!data || !data.stars) return;
+
+  data.stars.forEach(star => {
+    const [x, y, z] = star.position;
+    const mag = star.magnitude ?? 2.0;
+    const radius = Math.max(0.04, 0.22 - mag * 0.04);
+    const opacity = Math.min(1.0, Math.max(0.3, 1.1 - mag * 0.18));
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity })
+    );
+    mesh.position.set(x * scale, z * scale, 0);
+    mesh.userData.name = star.name;
+    mesh.userData.magnitude = mag;
+    mesh.userData.alt = star.alt;
+    mesh.userData.az = star.az;
+    skyGroup.add(mesh);
+  });
+
+  if (data.constellation_lines) {
+    data.constellation_lines.forEach(line => {
+      const [ax, ay, az] = line.from;
+      const [bx, by, bz] = line.to;
+      const points = [
+        new THREE.Vector3(ax * scale, az * scale, 0),
+        new THREE.Vector3(bx * scale, bz * scale, 0),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.6 });
+      skyGroup.add(new THREE.Line(geo, mat));
+    });
+  }
+
+  data.stars.forEach(star => {
+    const mag = star.magnitude ?? 2.0;
+    if (mag > 1.5) return;
+    const [x, y, z] = star.position;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "rgba(180,200,255,0.85)";
+    ctx.font = "22px monospace";
+    ctx.fillText(star.name, 8, 40);
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.8 })
+    );
+    sprite.scale.set(2.2, 0.55, 1);
+    sprite.position.set(x * scale + 0.3, z * scale + 0.3, 0);
+    skyGroup.add(sprite);
+  });
+
+  updateSkyOverlay(data);
+}
+
+function updateSkyOverlay(data) {
+  if (data && data.time) {
+    const ol = document.getElementById("neo-overlay");
+    if (ol) ol.textContent = `${data.time.date}  ${data.time.time}`;
+  }
+  const rm = document.getElementById("risk-meter");
+  if (rm) {
+    rm.innerHTML = `
+      <div style="font-size:10px;opacity:0.6;margin-bottom:2px">LOCAL SKY</div>
+      <div style="font-size:14px;font-weight:bold;color:#aaccff">WESTERLY, RI</div>
+      <div style="font-size:11px;opacity:0.7">41.38°N  71.83°W</div>
+    `;
+    rm.style.display = "block";
+  }
+}
+
+// ─── WEBSOCKETS ───────────────────────────────────────────────────────────────
 
 function connectSolarWS() {
   solarWs = new WebSocket("ws://localhost:8000/ws/solar");
@@ -402,27 +610,126 @@ function connectEarthWS() {
   earthWs.onclose = () => setTimeout(connectEarthWS, 3000);
 }
 
+function connectSkyWS() {
+  skyWs = new WebSocket("ws://localhost:8000/ws/sky");
+  skyWs.onopen = () => console.log("[WS] Sky connected");
+  skyWs.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (currentView === "sky") buildSkyView(data);
+    } catch(_) {}
+  };
+  skyWs.onclose = () => setTimeout(connectSkyWS, 3000);
+}
+
 // ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
+
+function showSolarUI() {
+  solarDatetime.style.display = "block";
+  eventsPanel.style.display = "block";
+  overlay.style.display = "none";
+  riskMeter.style.display = "none";
+  backBtn.style.display = "none";
+}
+
+function showSecondaryUI() {
+  solarDatetime.style.display = "none";
+  eventsPanel.style.display = "none";
+  overlay.style.display = "block";
+  riskMeter.style.display = "block";
+  backBtn.style.display = "block";
+}
+
+function switchToSolar() {
+  currentView = "solar";
+  showSolarUI();
+  buildScene();
+}
 
 function switchToEarth() {
   currentView = "earth";
-  riskMeter.style.display = "block";
-
+  showSecondaryUI();
+  backBtn.textContent = "← SOLAR SYSTEM";
   fetch("http://localhost:8000/scene/earth")
     .then(r => r.json())
     .then(data => buildEarthView(data));
 }
 
-function switchToSolar() {
-  currentView = "solar";
-  riskMeter.style.display = "none";
-  buildScene();
+function switchToSky() {
+  currentView = "sky";
+  showSecondaryUI();
+  backBtn.textContent = "← EARTH";
+  fetch("http://localhost:8000/scene/sky")
+    .then(r => r.json())
+    .then(data => buildSkyView(data));
 }
 
-// ─── RAYCASTER (click detection) ──────────────────────────────────────────────
+// ─── RAYCASTER ────────────────────────────────────────────────────────────────
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener("mousemove", (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+
+  let label = null;
+
+  if (currentView === "solar") {
+    const hits = raycaster.intersectObjects(planetMeshes);
+    if (hits.length > 0) {
+      const name = hits[0].object.userData.name;
+      label = name.charAt(0).toUpperCase() + name.slice(1);
+      renderer.domElement.style.cursor = name === "earth" ? "pointer" : "default";
+    } else {
+      renderer.domElement.style.cursor = "default";
+    }
+
+  } else if (currentView === "earth" && earthGroup) {
+    const targets = issMesh ? [earthGroup.children[0], issMesh, ...neoMeshes] : [earthGroup.children[0], ...neoMeshes];
+    const hits = raycaster.intersectObjects(targets);
+    if (hits.length > 0) {
+      const obj = hits[0].object;
+      if (obj.userData.name === "earth-sphere") {
+        label = "Earth — click to view local sky";
+        renderer.domElement.style.cursor = "pointer";
+      } else if (obj === issMesh) {
+        label = "ISS — International Space Station";
+        renderer.domElement.style.cursor = "crosshair";
+      } else {
+        label = `${obj.userData.name}  |  ${(obj.userData.dist / 1000).toFixed(0).toLocaleString()} k km`;
+        renderer.domElement.style.cursor = "crosshair";
+      }
+    } else {
+      renderer.domElement.style.cursor = "default";
+    }
+
+  } else if (currentView === "sky" && skyGroup) {
+    const starMeshes = skyGroup.children.filter(c => c.isMesh && c.userData.name);
+    const hits = raycaster.intersectObjects(starMeshes);
+    if (hits.length > 0) {
+      const s = hits[0].object;
+      label = `${s.userData.name}  |  mag ${(s.userData.magnitude ?? 0).toFixed(2)}  |  alt ${(s.userData.alt ?? 0).toFixed(1)}°`;
+      renderer.domElement.style.cursor = "crosshair";
+    } else {
+      renderer.domElement.style.cursor = "default";
+    }
+  }
+
+  if (label) {
+    tooltip.textContent = label;
+    tooltip.style.display = "block";
+    tooltip.style.left = (e.clientX + 14) + "px";
+    tooltip.style.top  = (e.clientY - 10) + "px";
+  } else {
+    tooltip.style.display = "none";
+  }
+});
+
+renderer.domElement.addEventListener("mouseleave", () => {
+  tooltip.style.display = "none";
+});
 
 renderer.domElement.addEventListener("click", (e) => {
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -434,48 +741,13 @@ renderer.domElement.addEventListener("click", (e) => {
     if (hits.length > 0 && hits[0].object.userData.name === "earth") {
       switchToEarth();
     }
-  } else {
-    switchToSolar();
+  } else if (currentView === "earth" && earthGroup) {
+    const hits = raycaster.intersectObject(earthGroup.children[0]);
+    if (hits.length > 0) switchToSky();
   }
 });
 
-// ─── RISK METER UI ────────────────────────────────────────────────────────────
-
-const riskMeter = document.createElement("div");
-riskMeter.id = "risk-meter";
-riskMeter.style.cssText = `
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  background: rgba(0,0,0,0.6);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 8px;
-  padding: 12px 18px;
-  color: white;
-  font-family: monospace;
-  text-align: center;
-  display: none;
-  pointer-events: none;
-`;
-document.body.appendChild(riskMeter);
-
-// ─── TIME OVERLAY ─────────────────────────────────────────────────────────────
-
-const overlay = document.createElement("div");
-overlay.id = "neo-overlay";
-overlay.style.cssText = `
-  position: fixed;
-  bottom: 16px;
-  right: 24px;
-  color: rgba(255,255,255,0.5);
-  font-family: monospace;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  pointer-events: none;
-`;
-document.body.appendChild(overlay);
-
-// ─── INIT ─────────────────────────────────────────────────────────────────────
+// ─── CAMERA + RESIZE ──────────────────────────────────────────────────────────
 
 function updateCamera() {
   aspect        = window.innerWidth / window.innerHeight;
@@ -493,10 +765,15 @@ window.addEventListener("resize", () => {
   buildScene();
 });
 
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
 updateCamera();
 buildScene();
+showSolarUI();
 connectSolarWS();
 connectEarthWS();
+connectSkyWS();
+
 function animate() {
   requestAnimationFrame(animate);
   if (sunShader) sunShader.uniforms.time.value += 0.01;
