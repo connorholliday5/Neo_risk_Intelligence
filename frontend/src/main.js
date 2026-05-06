@@ -5,6 +5,14 @@ import { PLANET_CONFIG } from "./planetConfig.js";
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 
+const sunLight = new THREE.PointLight(0xffffff, 4, 2000);
+sunLight.position.set(-60, 0, 20);
+scene.add(sunLight);
+scene.add(new THREE.AmbientLight(0x666666));
+const fillLight = new THREE.DirectionalLight(0xffffff, 1.5);
+fillLight.position.set(1, 0, 1);
+scene.add(fillLight);
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -76,7 +84,6 @@ function clearGroup(group) {
 
 // ─── UI ELEMENTS ──────────────────────────────────────────────────────────────
 
-// Solar: big clock top-center
 const solarDatetime = document.createElement("div");
 solarDatetime.id = "solar-datetime";
 solarDatetime.style.cssText = `
@@ -85,28 +92,28 @@ solarDatetime.style.cssText = `
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-  color: rgb(255, 255, 255);
+  color: rgba(255,255,255,0.9);
   font-family: monospace;
   pointer-events: none;
   display: none;
 `;
 document.body.appendChild(solarDatetime);
 
-// Solar: astronomy events bottom-center
 const eventsPanel = document.createElement("div");
 eventsPanel.id = "events-panel";
 eventsPanel.style.cssText = `
   position: fixed;
-  bottom: 32px;
+  bottom: 72px;
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-  color: rgba(255, 255, 255, 0.97);
+  color: rgb(255, 255, 255);
   font-family: monospace;
-  font-size: 30px;
+  font-size: 32px;
   letter-spacing: 0.08em;
   pointer-events: none;
   display: none;
+  white-space: nowrap;
 `;
 const year = new Date().getFullYear();
 const skyEvents = {
@@ -126,20 +133,50 @@ const skyEvents = {
   ],
 };
 const yearEvents = skyEvents[year] || skyEvents[2026];
+
+const today = new Date();
+const currentYear = today.getFullYear();
+
+function parseEventDate(str) {
+  const months = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+  const parts = str.split(" - ")[0].trim().split(" ");
+  return new Date(currentYear, months[parts[0]], parseInt(parts[1]));
+}
+
+function daysUntil(d) {
+  return Math.ceil((d - today) / 86400000);
+}
+
+const eventsHTML = yearEvents.map(e => {
+  const d = parseEventDate(e);
+  const days = daysUntil(d);
+  const isPast = days < -1;
+  const isNext = !isPast && yearEvents.filter(x => daysUntil(parseEventDate(x)) >= 0).indexOf(e) === 0;
+  const label = e.split(" - ").slice(1).join(" - ");
+  const date = e.split(" - ")[0];
+  if (isPast) {
+    return `<div style="margin:3px 0;opacity:0.3;text-decoration:line-through">${e}</div>`;
+  } else if (isNext) {
+    const tag = days === 0 ? "TODAY" : days === 1 ? "TOMORROW" : `${days}d`;
+    return `<div style="margin:5px 0;color:#ffe066;font-weight:bold">${date} - ${label} <span style="font-size:25px;opacity:0.7;margin-left:6px">[${tag}]</span></div>`;
+  } else {
+    return `<div style="margin:3px 0;opacity:0.6">${e}</div>`;
+  }
+}).join("");
+
 eventsPanel.innerHTML = `
-  <div style="font-size:21px;opacity:0.5;margin-bottom:6px;letter-spacing:0.2em">${year} SKY EVENTS — WESTERLY, RI</div>
-  ${yearEvents.map(e => `<div style="margin:3px 0">${e}</div>`).join("")}
+  <div style="font-size:20px;opacity:1.0;margin-bottom:8px;letter-spacing:0.2em">${year} SKY EVENTS - WESTERLY, RI</div>
+  ${eventsHTML}
 `;
 document.body.appendChild(eventsPanel);
 
-// Earth/Sky: date-time bottom-right
 const overlay = document.createElement("div");
 overlay.id = "neo-overlay";
 overlay.style.cssText = `
   position: fixed;
-  bottom: 16px;
+  bottom: 72px;
   right: 24px;
-  color: rgb(255, 255, 255);
+  color: rgba(255,255,255,0.5);
   font-family: monospace;
   font-size: 13px;
   letter-spacing: 0.05em;
@@ -148,7 +185,6 @@ overlay.style.cssText = `
 `;
 document.body.appendChild(overlay);
 
-// Earth/Sky: risk meter / info panel top-right
 const riskMeter = document.createElement("div");
 riskMeter.id = "risk-meter";
 riskMeter.style.cssText = `
@@ -156,7 +192,7 @@ riskMeter.style.cssText = `
   top: 24px;
   right: 24px;
   background: rgba(0,0,0,0.6);
-  border: 1px solid rgb(255, 255, 255);
+  border: 1px solid rgba(255,255,255,0.15);
   border-radius: 8px;
   padding: 12px 18px;
   color: white;
@@ -167,18 +203,17 @@ riskMeter.style.cssText = `
 `;
 document.body.appendChild(riskMeter);
 
-// Back button bottom-left
 const backBtn = document.createElement("div");
 backBtn.id = "back-btn";
 backBtn.style.cssText = `
   position: fixed;
-  bottom: 24px;
+  bottom: 72px;
   left: 24px;
   background: rgba(0,0,0,0.6);
   border: 1px solid rgba(255,255,255,0.2);
   border-radius: 6px;
   padding: 8px 16px;
-  color: rgb(255, 255, 255);
+  color: rgba(255,255,255,0.7);
   font-family: monospace;
   font-size: 13px;
   cursor: pointer;
@@ -194,7 +229,6 @@ backBtn.addEventListener("mouseenter", () => backBtn.style.color = "white");
 backBtn.addEventListener("mouseleave", () => backBtn.style.color = "rgba(255,255,255,0.7)");
 document.body.appendChild(backBtn);
 
-// Hover tooltip
 const tooltip = document.createElement("div");
 tooltip.style.cssText = `
   position: fixed;
@@ -212,6 +246,8 @@ tooltip.style.cssText = `
 document.body.appendChild(tooltip);
 
 // ─── SOLAR VIEW ───────────────────────────────────────────────────────────────
+
+const texLoader = new THREE.TextureLoader();
 
 function buildScene() {
   clearGroup(systemGroup);
@@ -363,9 +399,10 @@ function buildScene() {
   PLANET_ORDER.forEach((name, i) => {
     const cfg = PLANET_CONFIG[name] || { color: 0xffffff, size: 1.0 };
     const radius = cfg.size * sizeScale * 0.5;
+    const tex = texLoader.load(`/assets/textures/${name}.jpg`);
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(radius, 48, 48),
-      new THREE.MeshBasicMaterial({ color: cfg.color })
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 1.0, metalness: 0.0 })
     );
     mesh.position.set(positions[i], 0, 0);
     mesh.userData.baseX = positions[i];
@@ -415,20 +452,15 @@ function buildEarthView(data) {
   const viewHeight = camera.top - camera.bottom;
   const R = viewHeight * 0.22;
 
+  const earthTex = texLoader.load("/assets/textures/earth.jpg");
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(R, 64, 64),
-    new THREE.MeshBasicMaterial({ color: 0x1a6fa8 })
+    new THREE.MeshStandardMaterial({ map: earthTex, roughness: 1.0, metalness: 0.0 })
   );
   earth.userData.name = "earth-sphere";
   earthGroup.add(earth);
 
-  const atmo = new THREE.Mesh(
-    new THREE.RingGeometry(R * 1.02, R * 1.08, 128),
-    new THREE.MeshBasicMaterial({
-      color: 0x4488ff, side: THREE.DoubleSide, transparent: true, opacity: 0.15
-    })
-  );
-  earthGroup.add(atmo);
+
 
   const orbitRing = new THREE.Mesh(
     new THREE.RingGeometry(R * 1.12, R * 1.13, 128),
@@ -447,26 +479,62 @@ function buildEarthView(data) {
 
   neoMeshes = [];
   if (data && data.neos) {
-    data.neos.forEach(neo => {
+    const sorted = [...data.neos].sort((a, b) => (a.distance_km || 9e9) - (b.distance_km || 9e9));
+    sorted.forEach((neo, idx) => {
       const dist = neo.distance_km || 5000000;
-      let color;
-      if (dist < 500000) color = 0xff2200;
-      else if (dist < 2000000) color = 0xffaa00;
-      else color = 0x00ff88;
+      const ip = neo.impact_probability;
 
-      const angle = Math.random() * Math.PI * 2;
-      const r = R * (1.3 + Math.random() * 2.5);
+      let color;
+      if (ip !== null && ip !== undefined) {
+        if (ip > 0.001) color = 0xff2200;
+        else if (ip > 0.00001) color = 0xffaa00;
+        else color = 0x00ff88;
+      } else {
+        if (dist < 500000) color = 0xff2200;
+        else if (dist < 2000000) color = 0xffaa00;
+        else color = 0x00ff88;
+      }
+
+      const maxDist = 8000000;
+      const sizeFactor = Math.max(0.3, 1.0 - dist / maxDist);
+      const dotRadius = R * (0.018 + sizeFactor * 0.028);
+
+      const [nx, ny, nz] = neo.position;
+      const LUNAR_DIST = 384400;
+      const innerR = R * 1.25;
+      const outerR = R * 3.5;
+      const t = Math.min(dist / maxDist, 1.0);
+      const r = innerR + t * (outerR - innerR);
       const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(R * 0.025, 6, 6),
+        new THREE.SphereGeometry(dotRadius, 8, 8),
         new THREE.MeshBasicMaterial({ color })
       );
-      dot.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
+      // Use true direction from position vector
+      const len2d = Math.sqrt(nx * nx + ny * ny) || 1;
+      const dx = (nx / len2d) * r;
+      const dy = (ny / len2d) * r;
+      dot.position.set(dx, dy, 0);
       dot.userData.name = neo.name;
       dot.userData.dist = dist;
+      dot.userData.ip = ip;
+      dot.userData.isClosest = (idx === 0);
+      dot.userData.baseRadius = dotRadius;
       earthGroup.add(dot);
       neoMeshes.push(dot);
     });
   }
+
+  // Lunar distance reference ring
+  const lunarR = R * 1.28;
+  const lunarPts = [];
+  for (let i = 0; i <= 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    lunarPts.push(new THREE.Vector3(Math.cos(a) * lunarR, Math.sin(a) * lunarR, 0));
+  }
+  const lunarGeo = new THREE.BufferGeometry().setFromPoints(lunarPts);
+  const lunarLine = new THREE.Line(lunarGeo,
+    new THREE.LineBasicMaterial({ color: 0x334455, transparent: true, opacity: 0.3 }));
+  earthGroup.add(lunarLine);
 
   updateRiskMeter(data);
 }
@@ -484,15 +552,37 @@ function updateISSPosition(data) {
 function updateRiskMeter(data) {
   const el = document.getElementById("risk-meter");
   if (!el || !data || !data.neos || data.neos.length === 0) return;
-  const closest = Math.min(...data.neos.map(n => n.distance_km || 99999999));
+
+  const sorted = [...data.neos].sort((a, b) => (a.distance_km || 9e9) - (b.distance_km || 9e9));
+  const closest = sorted[0];
+  const dist = closest.distance_km || 0;
+  const ip = closest.impact_probability;
+
   let level, color;
-  if (closest < 500000) { level = "HIGH"; color = "#ff2200"; }
-  else if (closest < 2000000) { level = "ELEVATED"; color = "#ffaa00"; }
-  else { level = "NOMINAL"; color = "#00ff88"; }
+  if (ip !== null && ip !== undefined) {
+    if (ip > 0.001) { level = "HIGH"; color = "#ff2200"; }
+    else if (ip > 0.00001) { level = "ELEVATED"; color = "#ffaa00"; }
+    else { level = "NO THREAT"; color = "#00ff88"; }
+  } else {
+    if (dist < 500000) { level = "HIGH"; color = "#ff2200"; }
+    else if (dist < 2000000) { level = "ELEVATED"; color = "#ffaa00"; }
+    else { level = "NO THREAT"; color = "#00ff88"; }
+  }
+
+  const ipText = (ip !== null && ip !== undefined)
+    ? `${(ip * 100).toFixed(4)}%`
+    : `< 0.01%`;
+
+  const distText = dist > 999999
+    ? `${(dist / 1000000).toFixed(2)} M km`
+    : `${Math.round(dist / 1000).toLocaleString()} k km`;
+
   el.innerHTML = `
-    <div style="font-size:10px;opacity:0.6;margin-bottom:2px">CLOSEST NEO</div>
-    <div style="font-size:18px;font-weight:bold;color:${color}">${level}</div>
-    <div style="font-size:11px;opacity:0.7">${(closest / 1000).toFixed(0).toLocaleString()} k km</div>
+    <div style="font-size:9px;opacity:0.5;letter-spacing:1px;margin-bottom:3px">CLOSEST NEO</div>
+    <div style="font-size:11px;opacity:0.85;margin-bottom:2px">${closest.name}</div>
+    <div style="font-size:18px;font-weight:bold;color:${color};letter-spacing:1px">${level}</div>
+    <div style="font-size:10px;opacity:0.6;margin-top:3px">${distText}</div>
+    <div style="font-size:10px;opacity:0.6">impact prob: ${ipText}</div>
   `;
 }
 
@@ -504,20 +594,100 @@ function buildSkyView(data) {
   systemGroup.add(skyGroup);
 
   const viewHeight = camera.top - camera.bottom;
-  const scale = viewHeight * 0.48;
+  const domeR = viewHeight * 0.44;
 
   if (!data || !data.stars) return;
 
+  // Dome projection: alt/az -> screen coords
+  // zenith = center, horizon = edge of circle
+  // x = sin(az)*cos(alt)*domeR, y = cos(az)*cos(alt)*domeR (N at top)
+  function domeXY(alt, az) {
+    const altR = alt * Math.PI / 180;
+    const azR  = az  * Math.PI / 180;
+    const r = Math.cos(altR) * domeR;
+    return { x: Math.sin(azR) * r, y: Math.cos(azR) * r };
+  }
+
+  // Also works from position vector [px, py, pz] where pz=sin(alt), px=cos(alt)*sin(az), py=cos(alt)*cos(az)
+  function domePosFromVec(vec) {
+    return { x: vec[0] * domeR, y: vec[1] * domeR };
+  }
+
+  const starColors = {
+    "Sirius": 0xaabbff, "Vega": 0xbbccff, "Rigel": 0xaaccff,
+    "Deneb": 0xbbddff, "Spica": 0xaabbff, "Regulus": 0xbbccff,
+    "Bellatrix": 0xaabbff, "Castor": 0xccddff,
+    "Pollux": 0xffcc88, "Arcturus": 0xffaa55, "Aldebaran": 0xff9944,
+    "Betelgeuse": 0xff8833, "Antares": 0xff7722,
+    "Canopus": 0xeeeeff, "Procyon": 0xffeedd, "Altair": 0xeeeeff,
+    "Fomalhaut": 0xeeeeff, "Capella": 0xffee99,
+  };
+
+  // Horizon circle
+  const horizonPts = [];
+  for (let i = 0; i <= 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    horizonPts.push(new THREE.Vector3(Math.cos(a) * domeR, Math.sin(a) * domeR, 0));
+  }
+  const horizonGeo = new THREE.BufferGeometry().setFromPoints(horizonPts);
+  skyGroup.add(new THREE.Line(horizonGeo,
+    new THREE.LineBasicMaterial({ color: 0x223355, transparent: true, opacity: 0.6 })));
+
+  // Altitude rings (30, 60 deg)
+  [30, 60].forEach(altDeg => {
+    const r = Math.cos(altDeg * Math.PI / 180) * domeR;
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0));
+    }
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    skyGroup.add(new THREE.Line(g,
+      new THREE.LineBasicMaterial({ color: 0x1a2233, transparent: true, opacity: 0.4 })));
+  });
+
+  // Cardinal labels on horizon
+  const cardDirs = [
+    { label: "N", az: 0 }, { label: "E", az: 90 },
+    { label: "S", az: 180 }, { label: "W", az: 270 },
+  ];
+  cardDirs.forEach(c => {
+    const p = domeXY(0, c.az);
+    const canvas = document.createElement("canvas");
+    canvas.width = 80; canvas.height = 60;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "rgba(80,120,180,0.7)";
+    ctx.font = "bold 32px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(c.label, 40, 42);
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.65 })
+    );
+    sprite.scale.set(0.9, 0.68, 1);
+    sprite.position.set(p.x * 1.08, p.y * 1.08, 0);
+    skyGroup.add(sprite);
+  });
+
+  // Zenith dot
+  const zenith = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.5 })
+  );
+  skyGroup.add(zenith);
+
+  // Stars
   data.stars.forEach(star => {
-    const [x, y, z] = star.position;
     const mag = star.magnitude ?? 2.0;
-    const radius = Math.max(0.04, 0.22 - mag * 0.04);
-    const opacity = Math.min(1.0, Math.max(0.3, 1.1 - mag * 0.18));
+    const radius = Math.max(0.06, 0.28 - mag * 0.04);
+    const opacity = Math.min(1.0, Math.max(0.5, 1.3 - mag * 0.18));
+    const color = starColors[star.name] || 0xffffff;
+    const p = domeXY(star.alt, star.az);
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(radius, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity })
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
     );
-    mesh.position.set(x * scale, z * scale, 0);
+    mesh.position.set(p.x, p.y, 0);
     mesh.userData.name = star.name;
     mesh.userData.magnitude = mag;
     mesh.userData.alt = star.alt;
@@ -525,38 +695,57 @@ function buildSkyView(data) {
     skyGroup.add(mesh);
   });
 
+  // Constellation lines using position vectors
   if (data.constellation_lines) {
     data.constellation_lines.forEach(line => {
-      const [ax, ay, az] = line.from;
-      const [bx, by, bz] = line.to;
-      const points = [
-        new THREE.Vector3(ax * scale, az * scale, 0),
-        new THREE.Vector3(bx * scale, bz * scale, 0),
-      ];
-      const geo = new THREE.BufferGeometry().setFromPoints(points);
-      const mat = new THREE.LineBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.6 });
-      skyGroup.add(new THREE.Line(geo, mat));
+      const a = domePosFromVec(line.from);
+      const b = domePosFromVec(line.to);
+      const pts = [new THREE.Vector3(a.x, a.y, 0), new THREE.Vector3(b.x, b.y, 0)];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      skyGroup.add(new THREE.Line(geo,
+        new THREE.LineBasicMaterial({ color: 0x3355aa, transparent: true, opacity: 0.7 })));
     });
   }
 
+  // Bright star labels
   data.stars.forEach(star => {
-    const mag = star.magnitude ?? 2.0;
-    if (mag > 1.5) return;
-    const [x, y, z] = star.position;
+    if ((star.magnitude ?? 2.0) > 1.5) return;
+    const p = domeXY(star.alt, star.az);
     const canvas = document.createElement("canvas");
     canvas.width = 256; canvas.height = 64;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "rgba(180,200,255,0.85)";
-    ctx.font = "22px monospace";
+    ctx.fillStyle = "rgba(180,210,255,0.8)";
+    ctx.font = "20px monospace";
     ctx.fillText(star.name, 8, 40);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.8 })
+      new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.75 })
     );
     sprite.scale.set(2.2, 0.55, 1);
-    sprite.position.set(x * scale + 0.3, z * scale + 0.3, 0);
+    sprite.position.set(p.x + 0.3, p.y + 0.3, 0);
     skyGroup.add(sprite);
   });
+
+  // Constellation name labels
+  if (data.visible_constellations) {
+    data.visible_constellations.forEach(con => {
+      const p = domePosFromVec(con.centroid);
+      const canvas = document.createElement("canvas");
+      canvas.width = 480; canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "rgba(100,160,255,0.65)";
+      ctx.font = "bold 36px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(con.name.toUpperCase(), 240, 44);
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.7 })
+      );
+      sprite.scale.set(4.8, 0.64, 1);
+      sprite.position.set(p.x, p.y, 0);
+      skyGroup.add(sprite);
+    });
+  }
 
   updateSkyOverlay(data);
 }
@@ -680,7 +869,17 @@ renderer.domElement.addEventListener("mousemove", (e) => {
     const hits = raycaster.intersectObjects(planetMeshes);
     if (hits.length > 0) {
       const name = hits[0].object.userData.name;
-      label = name.charAt(0).toUpperCase() + name.slice(1);
+      const descriptions = {
+        mercury: "Mercury — 0.39 AU — 88 day orbit",
+        venus:   "Venus — 0.72 AU — 225 day orbit",
+        earth:   "Earth — 1.00 AU — click to view",
+        mars:    "Mars — 1.52 AU — 687 day orbit",
+        jupiter: "Jupiter — 5.20 AU — 12 year orbit",
+        saturn:  "Saturn — 9.58 AU — 29 year orbit",
+        uranus:  "Uranus — 19.2 AU — 84 year orbit",
+        neptune: "Neptune — 30.1 AU — 165 year orbit",
+      };
+      label = descriptions[name] || name;
       renderer.domElement.style.cursor = name === "earth" ? "pointer" : "default";
     } else {
       renderer.domElement.style.cursor = "default";
@@ -698,7 +897,10 @@ renderer.domElement.addEventListener("mousemove", (e) => {
         label = "ISS — International Space Station";
         renderer.domElement.style.cursor = "crosshair";
       } else {
-        label = `${obj.userData.name}  |  ${(obj.userData.dist / 1000).toFixed(0).toLocaleString()} k km`;
+        const ipStr = (obj.userData.ip !== null && obj.userData.ip !== undefined)
+          ? `  |  ip: ${(obj.userData.ip * 100).toFixed(4)}%`
+          : '  |  ip: <0.01%';
+        label = `${obj.userData.name}  |  ${(obj.userData.dist / 1000).toFixed(0).toLocaleString()} k km${ipStr}`;
         renderer.domElement.style.cursor = "crosshair";
       }
     } else {
@@ -777,6 +979,27 @@ connectSkyWS();
 function animate() {
   requestAnimationFrame(animate);
   if (sunShader) sunShader.uniforms.time.value += 0.01;
+  planetMeshes.forEach(mesh => {
+    mesh.rotation.y += 0.0002;
+  });
+  // Pulse closest NEO
+  if (neoMeshes.length > 0) {
+    const t = Date.now() / 600;
+    neoMeshes.forEach(dot => {
+      if (dot.userData.isClosest) {
+        const pulse = 1.0 + Math.sin(t) * 0.35;
+        const r = dot.userData.baseRadius * pulse;
+        dot.scale.setScalar(pulse);
+      }
+    });
+  }
   composer.render();
 }
 animate();
+
+
+
+
+
+
+

@@ -135,14 +135,62 @@ def build_sky_scene(lat: float, lon: float, elevation_m: float = 10) -> Dict:
             stars.append(entry)
             star_positions[star["name"]] = pos.tolist()
 
-    # Build visible constellation lines
+    # Build visible constellation lines with names
+    CONSTELLATION_MEMBERSHIP = {
+        "Orion": ["Betelgeuse","Alnilam","Rigel","Alnitak","Mintaka","Bellatrix"],
+        "Ursa Major": ["Dubhe","Merak","Phecda","Megrez","Alioth","Mizar","Alkaid"],
+        "Cassiopeia": ["Caph","Schedar","Gamma Cas","Ruchbah","Segin"],
+        "Leo": ["Regulus","Algieba","Zosma","Denebola"],
+        "Gemini": ["Pollux","Castor","Alhena","Elnath"],
+        "Virgo": ["Spica","Muphrid"],
+        "Scorpius": ["Antares","Sabik","Nunki"],
+        "Sagittarius": ["Kaus Australis","Nunki","Ascella"],
+        "Summer Triangle": ["Vega","Altair","Deneb"],
+        "Pegasus": ["Markab","Scheat","Alpheratz","Algenib"],
+        "Andromeda": ["Alpheratz","Mirach","Almach"],
+        "Ophiuchus": ["Rasalhague","Rasalgethi","Sabik"],
+    }
+
+    CONSTELLATION_LINE_MAP = {
+        ("Betelgeuse","Alnilam"): "Orion", ("Alnilam","Rigel"): "Orion",
+        ("Alnilam","Alnitak"): "Orion", ("Alnitak","Mintaka"): "Orion",
+        ("Mintaka","Alnilam"): "Orion", ("Betelgeuse","Bellatrix"): "Orion",
+        ("Bellatrix","Mintaka"): "Orion", ("Rigel","Alnitak"): "Orion",
+        ("Dubhe","Merak"): "Ursa Major", ("Merak","Phecda"): "Ursa Major",
+        ("Phecda","Megrez"): "Ursa Major", ("Megrez","Alioth"): "Ursa Major",
+        ("Alioth","Mizar"): "Ursa Major", ("Mizar","Alkaid"): "Ursa Major",
+        ("Megrez","Dubhe"): "Ursa Major",
+        ("Caph","Schedar"): "Cassiopeia", ("Schedar","Gamma Cas"): "Cassiopeia",
+        ("Gamma Cas","Ruchbah"): "Cassiopeia", ("Ruchbah","Segin"): "Cassiopeia",
+        ("Regulus","Algieba"): "Leo", ("Algieba","Zosma"): "Leo", ("Zosma","Denebola"): "Leo",
+        ("Pollux","Castor"): "Gemini", ("Pollux","Alhena"): "Gemini", ("Castor","Elnath"): "Gemini",
+        ("Spica","Muphrid"): "Virgo",
+        ("Antares","Sabik"): "Scorpius", ("Antares","Nunki"): "Scorpius",
+        ("Kaus Australis","Nunki"): "Sagittarius", ("Nunki","Ascella"): "Sagittarius",
+        ("Vega","Altair"): "Summer Triangle", ("Altair","Deneb"): "Summer Triangle", ("Deneb","Vega"): "Summer Triangle",
+        ("Markab","Scheat"): "Pegasus", ("Scheat","Alpheratz"): "Pegasus",
+        ("Alpheratz","Algenib"): "Pegasus", ("Algenib","Markab"): "Pegasus",
+        ("Alpheratz","Mirach"): "Andromeda", ("Mirach","Almach"): "Andromeda",
+        ("Rasalhague","Rasalgethi"): "Ophiuchus", ("Rasalhague","Sabik"): "Ophiuchus",
+    }
+
     lines = []
     for a, b in CONSTELLATION_LINES:
         if a in star_positions and b in star_positions:
+            con = CONSTELLATION_LINE_MAP.get((a, b), CONSTELLATION_LINE_MAP.get((b, a), ""))
             lines.append({
                 "from": star_positions[a],
                 "to": star_positions[b],
+                "constellation": con,
             })
+
+    # Compute visible constellation centroids for labels
+    visible_constellations = []
+    for con_name, members in CONSTELLATION_MEMBERSHIP.items():
+        visible_members = [star_positions[m] for m in members if m in star_positions]
+        if len(visible_members) >= 2:
+            centroid = np.mean(visible_members, axis=0).tolist()
+            visible_constellations.append({"name": con_name, "centroid": centroid})
 
     return {
         "type": "sky",
@@ -154,4 +202,6 @@ def build_sky_scene(lat: float, lon: float, elevation_m: float = 10) -> Dict:
         },
         "stars": stars,
         "constellation_lines": lines,
+        "visible_constellations": visible_constellations,
     }
+

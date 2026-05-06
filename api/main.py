@@ -1,4 +1,4 @@
-﻿import sys, os
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
@@ -81,7 +81,13 @@ def build_full_scene(page: str) -> dict:
         )
         scene["iss"]["position"] = to_float_list(scene["iss"]["position"])
         scene["neos"] = [
-            {"name": n["name"], "position": to_float_list(n["position"])}
+            {
+                "name": n["name"],
+                "position": to_float_list(n["position"]),
+                "distance_km": float(n.get("distance_km", 0)),
+                "distance_au": float(n.get("distance_au", 0)),
+                "impact_probability": n.get("impact_probability", None),
+            }
             for n in scene.get("neos", [])
         ]
 
@@ -116,3 +122,6 @@ async def websocket_scene(websocket: WebSocket, page: str):
             await asyncio.sleep(2)
     except WebSocketDisconnect:
         print(f"[WS] Client disconnected: {page}")
+
+
+

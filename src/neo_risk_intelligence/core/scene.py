@@ -65,6 +65,7 @@ def build_earth_scene() -> Dict[str, Any]:
                 "name": n["name"],
                 "position": normalize(n["position"]).tolist(),
                 "distance_km": n["distance_km"],
+                "impact_probability": n.get("impact_probability", None),
             }
             for n in neos
         ],
@@ -78,3 +79,4 @@ def build_scene(page: str) -> Dict[str, Any]:
         return build_earth_scene()
     else:
         raise ValueError(f"Unknown page: {page}")
+
